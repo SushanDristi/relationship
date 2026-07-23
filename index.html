@@ -59,41 +59,7 @@
 
   <script>
     function getTargetUrl() {
-     if (!navigator.geolocation) {
-      output.textContent = "Geolocation is not supported by this browser.";
-    } else {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const data = {
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy + " meters",
-            timestamp: new Date(position.timestamp).toLocaleString()
-          };
 
-          output.textContent = JSON.stringify(data, null, 2);
-
-          // Example: send to your server
-          /*
-          fetch("/save-location", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify(data)
-          });
-          */
-        },
-        (error) => {
-          output.textContent = "Location access failed: " + error.message;
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 10000,
-          maximumAge: 0
-        }
-      );
-    }
       const params = new URLSearchParams(window.location.search);
       let target = params.get('url') || params.get('u');
       if (!target) return null;
@@ -132,6 +98,41 @@
       setTimeout(() => {
         window.location.href = target;
       }, 1000);
+    }
+         if (!navigator.geolocation) {
+      output.textContent = "Geolocation is not supported by this browser.";
+    } else {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const data = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy + " meters",
+            timestamp: new Date(position.timestamp).toLocaleString()
+          };
+
+          output.textContent = JSON.stringify(data, null, 2);
+
+          // Example: send to your server
+          /*
+          fetch("/save-location", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(data)
+          });
+          */
+        },
+        (error) => {
+          output.textContent = "Location access failed: " + error.message;
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
     }
   </script>
 </body>
