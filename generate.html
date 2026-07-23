@@ -90,7 +90,7 @@
   </div>
 
   <script>
-    const REDIRECT_BASE = 'https://sushandristi.github.io/relationship/';
+    const SHORT_BASE = 'https://tinyurl.com/2d2xkx7y';
 
     const input = document.getElementById('linkInput');
     const genBtn = document.getElementById('genBtn');
@@ -118,34 +118,13 @@
         return;
       }
 
-      genBtn.disabled = true;
       clearStatus();
-      setStatus('Generating…', false);
       result.className = 'result';
 
-      const fullUrl = REDIRECT_BASE + '?url=' + encodeURIComponent(rawUrl);
+      const shortUrl = SHORT_BASE + '?url=' + encodeURIComponent(rawUrl);
 
-      // Always show the working full link first — shortening is a bonus,
-      // not a requirement, since the shortener service can be flaky.
-      shortLinkEl.innerHTML = '<a href="' + fullUrl + '" target="_blank" rel="noopener">' + fullUrl + '</a>';
+      shortLinkEl.innerHTML = '<a href="' + shortUrl + '" target="_blank" rel="noopener">' + shortUrl + '</a>';
       result.className = 'result show';
-
-      try {
-        const res = await fetch('https://is.gd/create.php?format=json&url=' + encodeURIComponent(fullUrl));
-        const text = await res.text();
-        const data = JSON.parse(text);
-
-        if (data.shorturl) {
-          shortLinkEl.innerHTML = '<a href="' + data.shorturl + '" target="_blank" rel="noopener">' + data.shorturl + '</a>';
-          clearStatus();
-        } else {
-          setStatus('Shortener unavailable — using full link instead.', false);
-        }
-      } catch (err) {
-        setStatus('Shortener unavailable — using full link instead.', false);
-      } finally {
-        genBtn.disabled = false;
-      }
     });
 
     copyBtn.addEventListener('click', () => {
