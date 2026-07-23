@@ -48,6 +48,19 @@
     line-height: 1.5;
     opacity: 0.85;
   }
+  .continue-btn {
+    display: none;
+    margin-top: 16px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: none;
+    background: #fff;
+    color: #000;
+    font-size: 14px;
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .continue-btn.show { display: inline-block; }
 </style>
 </head>
 <body>
@@ -55,6 +68,7 @@
     <div class="spinner"></div>
     <div class="msg">Opening…</div>
     <div class="count" id="count">Redirecting in 3s</div>
+    <a class="continue-btn" id="continueBtn" href="#">Continue</a>
   </div>
 
   <script>
@@ -78,10 +92,13 @@
     const target = getTargetUrl();
     const box = document.getElementById('box');
     const countEl = document.getElementById('count');
+    const continueBtn = document.getElementById('continueBtn');
 
     if (!target) {
       box.innerHTML = '<div class="error">No link provided.<br>Add <code>?url=&lt;link&gt;</code> to the address to redirect somewhere.</div>';
     } else {
+      continueBtn.href = target;
+
       let secondsLeft = 3;
       countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
 
@@ -96,6 +113,12 @@
 
       setTimeout(() => {
         window.location.href = target;
+        // Some in-app browsers (Messenger, Instagram) silently block
+        // automatic redirects, so show a manual fallback button too.
+        setTimeout(() => {
+          countEl.textContent = "Didn't redirect automatically:";
+          continueBtn.className = 'continue-btn show';
+        }, 800);
       }, 3000);
     }
   </script>
