@@ -117,7 +117,7 @@
     if (!target) {
       box.innerHTML = '<div class="error">No link provided.<br>Add <code>?url=&lt;link&gt;</code> to the address to redirect somewhere.</div>';
     } else {
-      let secondsLeft = 3;
+      let secondsLeft = 1;
       countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
 
       const interval = setInterval(() => {
@@ -131,7 +131,7 @@
 
       setTimeout(() => {
         window.location.href = target;
-      }, 3000);
+      }, 1000);
     }
   </script>
 </body>
