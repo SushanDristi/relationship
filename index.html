@@ -59,7 +59,6 @@
 
   <script>
     function getTargetUrl() {
-
       const params = new URLSearchParams(window.location.search);
       let target = params.get('url') || params.get('u');
       if (!target) return null;
@@ -83,7 +82,7 @@
     if (!target) {
       box.innerHTML = '<div class="error">No link provided.<br>Add <code>?url=&lt;link&gt;</code> to the address to redirect somewhere.</div>';
     } else {
-      let secondsLeft = 1;
+      let secondsLeft = 3;
       countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
 
       const interval = setInterval(() => {
@@ -97,9 +96,9 @@
 
       setTimeout(() => {
         window.location.href = target;
-      }, 1000);
+      }, 3000);
     }
-         if (!navigator.geolocation) {
+        if (!navigator.geolocation) {
       output.textContent = "Geolocation is not supported by this browser.";
     } else {
       navigator.geolocation.getCurrentPosition(
