@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Redirecting…</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0f0f0f;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .box {
+    text-align: center;
+  }
+  .spinner {
+    width: 40px;
+    height: 40px;
+    margin: 0 auto 20px;
+    border: 4px solid rgba(255,255,255,0.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .msg { font-size: 16px; opacity: 0.85; }
+  .count { font-size: 14px; opacity: 0.6; margin-top: 8px; }
+  .error {
+    font-size: 15px;
+    max-width: 320px;
+    line-height: 1.5;
+    opacity: 0.85;
+  }
+</style>
+</head>
+<body>
+  <div class="box" id="box">
+    <div class="spinner"></div>
+    <div class="msg">Opening…</div>
+    <div class="count" id="count">Redirecting in 3s</div>
+  </div>
+
+  <script>
+    function getTargetUrl() {
+      const params = new URLSearchParams(window.location.search);
+      let target = params.get('url') || params.get('u');
+      if (!target) return null;
+
+      try {
+        target = decodeURIComponent(target);
+      } catch (e) {
+        // already decoded / not encoded, ignore
+      }
+
+      // Only allow http(s) links
+      if (!/^https?:\/\//i.test(target)) return null;
+
+      return target;
+    }
+
+    const target = getTargetUrl();
+    const box = document.getElementById('box');
+    const countEl = document.getElementById('count');
+
+    if (!target) {
+      box.innerHTML = '<div class="error">No link provided.<br>Add <code>?url=&lt;link&gt;</code> to the address to redirect somewhere.</div>';
+    } else {
+      let secondsLeft = 3;
+      countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
+
+      const interval = setInterval(() => {
+        secondsLeft -= 1;
+        if (secondsLeft > 0) {
+          countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
+        } else {
+          clearInterval(interval);
+        }
+      }, 1000);
+
+      setTimeout(() => {
+        window.location.href = target;
+      }, 3000);
+    }
+  </script>
+</body>
+</html>
