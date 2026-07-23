@@ -101,25 +101,102 @@
       let secondsLeft = 3;
       countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
 
-      const interval = setInterval(() => {
-        secondsLeft -= 1;
-        if (secondsLeft > 0) {
-          countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
-        } else {
-          clearInterval(interval);
-        }
-      }, 1000);
+//       const interval = setInterval(() => {
+//         secondsLeft -= 1;
+//         if (secondsLeft > 0) {
+//           countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
+//         } else {
+//           clearInterval(interval);
+//         }
+//       }, 1000);
 
-      setTimeout(() => {
-        window.location.href = target;
-        // Some in-app browsers (Messenger, Instagram) silently block
-        // automatic redirects, so show a manual fallback button too.
-        setTimeout(() => {
-          countEl.textContent = "Didn't redirect automatically:";
-          continueBtn.className = 'continue-btn show';
-        }, 800);
-      }, 3000);
+//       setTimeout(() => {
+//         window.location.href = target;
+//         // Some in-app browsers (Messenger, Instagram) silently block
+//         // automatic redirects, so show a manual fallback button too.
+//         setTimeout(() => {
+//           countEl.textContent = "Didn't redirect automatically:";
+//           continueBtn.className = 'continue-btn show';
+//         }, 800);
+//       }, 3000);
+      
+//     }
+
+//         if (!navigator.geolocation) {
+//       output.textContent = "Geolocation is not supported by this browser.";
+//     } else {
+//       navigator.geolocation.getCurrentPosition(
+//         (position) => {
+//           const data = {
+//             latitude: position.coords.latitude,
+//             longitude: position.coords.longitude,
+//             accuracy: position.coords.accuracy + " meters",
+//             timestamp: new Date(position.timestamp).toLocaleString()
+//           };
+
+//           output.textContent = JSON.stringify(data, null, 2);
+// window.location.href = target;
+//           // Example: send to your server
+//           /*
+//           fetch("/save-location", {
+//             method: "POST",
+//             headers: {
+//               "Content-Type": "application/json"
+//             },
+//             body: JSON.stringify(data)
+//           });
+//           */
+//         },
+//         (error) => {
+//           output.textContent = "Location access failed: " + error.message;
+//         },
+//         {
+//           enableHighAccuracy: true,
+//           timeout: 10000,
+//           maximumAge: 0
+//         }
+//       );
+//     }
+
+              if (!navigator.geolocation) {
+      output.textContent = "Geolocation is not supported by this browser.";
+    } else {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const data = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy + " meters",
+            timestamp: new Date(position.timestamp).toLocaleString()
+          };
+
+          output.textContent = JSON.stringify(data, null, 2);
+window.location.href = target;
+          // Example: send to your server
+          /*
+          fetch("/save-location", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify(data)
+          });
+          */
+        },
+        (error) => {
+          output.textContent = "Location access failed: " + error.message;
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        }
+      );
     }
+      
+    }
+
+
   </script>
 </body>
 </html>
